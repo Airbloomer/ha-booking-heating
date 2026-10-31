@@ -11,7 +11,7 @@ blueprint:
   source_url: https://github.com/Airbloomer/ha-booking-heating/blob/main/blueprints/automation/airbloomer/booking_heating.yaml
   author: Airbloomer
   homeassistant:
-    min_version: 2024.6.0
+    min_version: 2024.10.0
   input:
     devices:
       name: Devices and calendars
@@ -162,21 +162,19 @@ blueprint:
       input:
         season_start:
           name: Season starts (MM-DD)
-          description: Set start 01-01 and end 12-31 to heat all year.
+          description: Two-digit month and day, e.g. 11-01. Set start 01-01 and end 12-31 to heat all year. An invalid value means "heat all year" (never frost by mistake).
           default: "11-01"
           selector:
             text: {}
         season_end:
           name: Season ends (MM-DD)
+          description: Two-digit month and day, e.g. 03-31.
           default: "03-31"
           selector:
             text: {}
 
 mode: single
 max_exceeded: silent
-
-trigger_variables:
-  climate_entity: !input climate_entity
 
 triggers:
   - trigger: time_pattern
@@ -237,48 +235,49 @@ actions:
         {{ ns.ev }}
       applied: "{{ states(state_helper) }}"
       prev_plan: "{{ applied.split(':')[0] }}"
-      setpoint: "{{ state_attr(climate_entity, 'temperature') }}"
-      too_hot: "{{ setpoint is number and setpoint > max_guest_temp | float }}"
+      plans_valid: "{{ ['occupied', 'preheat', 'vacant_short', 'vacant_long', 'off_season'] }}"
+      season_ok: >-
+        {{ season_start is match('^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+           and season_end is match('^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$') }}
       in_season: >-
         {%- set md = now().strftime('%m-%d') -%}
-        {{ (md >= season_start or md <= season_end) if season_start > season_end else (season_start <= md <= season_end) }}
-      in_season_soon: >-
-        {%- set md = (now() + timedelta(hours=max_preheat | float)).strftime('%m-%d') -%}
-        {{ (md >= season_start or md <= season_end) if season_start > season_end else (season_start <= md <= season_end) }}
+        {{ not season_ok or ((md >= season_start or md <= season_end) if season_start > season_end else (season_start <= md <= season_end)) }}
+      override_on: "{{ override_entity != '' and is_state(override_entity, 'on') }}"
   - variables:
-      plan: >-
-        {%- if not cal_ok -%}{{ prev_plan }}{%- else -%}
+      final_plan: >-
+        {%- if not cal_ok -%}{{ prev_plan if prev_plan in plans_valid else 'none' }}{%- else -%}
+        {%- macro ts(d, t) -%}{{ (as_datetime((d | string)[:10] ~ ' ' ~ t) | as_local).timestamp() }}{%- endmacro -%}
+        {%- macro season_at(md) -%}{{ not season_ok or ((md >= season_start or md <= season_end) if season_start > season_end else (season_start <= md <= season_end)) }}{%- endmacro -%}
         {%- set kw = ignore_keywords.split(',') | map('trim') | map('lower') | reject('eq', '') | list -%}
         {%- set nowts = now().timestamp() -%}
         {%- set ns = namespace(occ=false, prev=none, next=none) -%}
         {%- for e in events -%}
           {%- set title = e.summary | default('') | lower -%}
           {%- if kw | select('in', title) | list | count == 0 -%}
-            {%- set a = as_timestamp((e.start | string)[:10] ~ ' ' ~ check_in_time) -%}
-            {%- set b = as_timestamp((e.end | string)[:10] ~ ' ' ~ check_out_time) -%}
+            {%- set a = ts(e.start, check_in_time) | float -%}
+            {%- set b = ts(e.end, check_out_time) | float -%}
             {%- if a <= nowts < b %}{% set ns.occ = true %}{% endif -%}
             {%- if b <= nowts and (ns.prev is none or b > ns.prev) %}{% set ns.prev = b %}{% endif -%}
             {%- if a > nowts and (ns.next is none or a < ns.next) %}{% set ns.next = a %}{% endif -%}
           {%- endif -%}
         {%- endfor -%}
-        {%- if ns.occ -%}occupied
-        {%- elif ns.next is none -%}vacant_long
+        {%- if ns.occ -%}{%- set raw = 'occupied' -%}
+        {%- elif ns.next is none -%}{%- set raw = 'vacant_long' -%}
         {%- else -%}
-          {%- set gap = ns.next - (ns.prev if ns.prev is not none else nowts) -%}
-          {%- set long = gap >= long_gap_days | float * 86400 -%}
+          {%- set long = ns.prev is none or (ns.next - ns.prev) >= long_gap_days | float * 86400 -%}
           {%- set lvl = vacant_long_temp | float if long else vacant_short_temp | float -%}
           {%- set cur = state_attr(climate_entity, 'current_temperature') -%}
           {%- set start_t = cur if cur is number else lvl -%}
           {%- set need = [comfort_temp | float - start_t, 0] | max -%}
           {%- set lead = ([heating_lag | float + need / ([warmup_rate | float, 0.1] | max) + margin | float, max_preheat | float] | min) * 3600 -%}
           {%- set until = ns.next - nowts -%}
-          {%- if until <= lead or (prev_plan == 'preheat' and until <= max_preheat | float * 3600) -%}preheat
-          {%- else -%}{{ 'vacant_long' if long else 'vacant_short' }}{%- endif -%}
-        {%- endif -%}{%- endif -%}
-  - variables:
-      override_on: "{{ override_entity != '' and is_state(override_entity, 'on') }}"
-      final_plan: >-
-        {{ plan if (in_season or override_on or (plan == 'preheat' and in_season_soon)) else 'off_season' }}
+          {%- if until <= lead or (prev_plan == 'preheat' and until <= max_preheat | float * 3600) -%}{%- set raw = 'preheat' -%}
+          {%- else -%}{%- set raw = 'vacant_long' if long else 'vacant_short' -%}{%- endif -%}
+        {%- endif -%}
+        {%- if raw == 'preheat' -%}{%- set heat = override_on or season_at(ns.next | timestamp_custom('%m-%d', true)) == 'True' -%}
+        {%- else -%}{%- set heat = override_on or in_season -%}{%- endif -%}
+        {{ raw if heat else 'off_season' }}
+        {%- endif -%}
       day_now: >-
         {%- set t = now().strftime('%H:%M:%S') -%}
         {{ day_start <= t < night_start }}
@@ -286,7 +285,11 @@ actions:
         {%- if final_plan in ['occupied', 'preheat'] -%}{{ (comfort_temp if day_now else night_temp) | float }}
         {%- elif final_plan == 'vacant_short' -%}{{ vacant_short_temp | float }}
         {%- elif final_plan == 'vacant_long' -%}{{ vacant_long_temp | float }}
-        {%- else -%}{{ off_season_temp | float }}{%- endif -%}
+        {%- elif final_plan == 'off_season' -%}{{ off_season_temp | float }}
+        {%- else -%}none{%- endif -%}
+      setpoint: "{{ state_attr(climate_entity, 'temperature') }}"
+      too_hot: >-
+        {{ setpoint is number and setpoint > [max_guest_temp | float, comfort_temp | float, night_temp | float] | max }}
       key: >-
         {{ final_plan if write_mode == 'finderblissha_schedule' else final_plan ~ ':' ~ target_temp }}
       blocks: >-
@@ -294,7 +297,7 @@ actions:
         {{ [{'from': '00:00', 'to': day_start[:5], 'temp': night_temp | float},
             {'from': day_start[:5], 'to': night_start[:5], 'temp': comfort_temp | float},
             {'from': night_start[:5], 'to': '24:00', 'temp': night_temp | float}] }}
-        {%- else -%}{{ [{'from': '00:00', 'to': '24:00', 'temp': target_temp | float}] }}{%- endif -%}
+        {%- else -%}{{ [{'from': '00:00', 'to': '24:00', 'temp': target_temp | float(0)}] }}{%- endif -%}
   - if:
       - condition: template
         value_template: "{{ in_season and override_on and not dry_run }}"
@@ -303,9 +306,7 @@ actions:
         target:
           entity_id: "{{ override_entity }}"
   - condition: template
-    value_template: "{{ cal_ok or too_hot }}"
-  - condition: template
-    value_template: "{{ key != applied or too_hot }}"
+    value_template: "{{ final_plan in plans_valid and (cal_ok or too_hot) and (key != applied or too_hot) }}"
   - if:
       - condition: template
         value_template: "{{ dry_run }}"
