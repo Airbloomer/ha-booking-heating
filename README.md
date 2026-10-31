@@ -50,7 +50,7 @@ Events are treated as all-day stays from the check-in day to the check-out day, 
 ### Thermostats
 
 - **Most thermostats:** `set_temperature` mode calls `climate.set_temperature`, switching between day and night set points at the times you choose.
-- **Finder Bliss 2:** `finderblissha_schedule` mode writes a weekly schedule through the Finder Bliss integration's `set_schedule` service (manual set points switch a Bliss 2 off). That service is in [Airbloomer/finderblissha](https://github.com/Airbloomer/finderblissha) v0.5.8 and later (installable as a HACS custom repository) and proposed upstream in [condatek/finderblissha#17](https://github.com/condatek/finderblissha/pull/17). With a version that lacks it, every write fails and nothing changes.
+- **Finder Bliss 2:** `finderblissha_schedule` mode writes a weekly schedule through the Finder Bliss integration's `set_schedule` service (manual set points switch a Bliss 2 off). That service was merged upstream in [condatek/finderblissha#17](https://github.com/condatek/finderblissha/pull/17) (integration version 0.5.8 and later). Until a release that includes it is published, install from the upstream main branch or from [Airbloomer/finderblissha](https://github.com/Airbloomer/finderblissha) as a HACS custom repository. With a version that lacks it, every write fails and nothing changes.
 
 ## Notes
 
