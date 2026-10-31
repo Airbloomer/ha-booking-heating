@@ -1,0 +1,24 @@
+name: Validate
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Parse blueprint (custom !input tag)
+        run: |
+          python3 - <<'PY'
+          import yaml
+          class L(yaml.SafeLoader): pass
+          L.add_constructor('!input', lambda l, n: l.construct_scalar(n))
+          bp = yaml.load(open('blueprints/automation/airbloomer/booking_heating.yaml'), Loader=L)
+          names = {k for s in bp['blueprint']['input'].values() for k in s['input']}
+          used = set(v for v in bp['variables'].values() if isinstance(v, str) and v in names)
+          missing = names - used
+          assert not missing, f"inputs not mapped to variables: {missing}"
+          print("ok:", len(names), "inputs")
+          PY
