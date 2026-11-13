@@ -51,9 +51,9 @@ Events are treated as all-day stays from the check-in day to the check-out day, 
 
 ### Skip blocks until a date
 
-With *Heat blocked dates* on, pick an **input_datetime** helper with a date (date only, or date and time; a time-only helper isn't supported) as *Skip blocks until* and set it. Until then, blocks that start before it are skipped again, so a closed period stays at the empty set point. **Bookings are never affected:** a guest who books inside the window gets a warm home. A block that is removed simply leaves its dates empty. It ends by itself at that moment, and every block counts again, including one already in progress. A block that starts on or after the date gets its full pre-heat, even when pre-heat has to begin before the date. If the helper is unset, unavailable or has no date, it has no effect.
+With *Heat blocked dates* on, pick an **input_datetime** helper with a date (date only, or date and time; a time-only helper isn't supported) as *Skip blocks until* and set it. Until then, blocks that start before it are skipped again, so a closed period stays at the empty set point. **Bookings are never affected:** a guest who books inside the window gets a warm home. A booking here is any event whose title contains none of the ignored keywords. If a channel titles real reservations with one of those words (check your own export), its guests are treated as blocks, both here and by default, so remove that word from the keywords. A block that is removed simply leaves its dates empty. It ends by itself at that moment, and every block counts again, including one already in progress. A block that starts on or after the date gets its full pre-heat, even when pre-heat has to begin before the date. If the helper is unset, unavailable or has no date, it has no effect.
 
-*Assume empty until*, added earlier the same day, has been replaced by this: it skipped bookings inside its window too, which would leave a guest in a cold home.
+An earlier, unreleased input, *Assume empty until* (merged 2026-11-13 and replaced the same day), has been removed: it also skipped bookings inside its window, which would leave a guest in a cold home. An automation that still has it set loses the window, so bookings in it are heated.
 
 ### Thermostats
 

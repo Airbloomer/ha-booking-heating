@@ -130,6 +130,8 @@ CASES = [
      [stay("garbage", "2027-01-06", BLOCK), stay("2026-12-01", "2026-12-05")], {}, "occupied"),
     ("default: a skip date alone changes nothing", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
      {"inputs": {"ignore_blocks_until": "input_datetime.v"}, "states": {"input_datetime.v": "2026-11-30 23:59:00"}}, "occupied"),
+    ("default: a skip date alone leaves blocks skipped", T(2026, 11, 20, 12), [stay("2026-11-13", "2026-12-01", BLOCK)],
+     {"inputs": {"ignore_blocks_until": "input_datetime.v"}, "states": {"input_datetime.v": "2026-11-10 00:00:00"}}, "vacant_long"),
     # Heat blocked dates on.
     ("heat blocks: owner stay heats", T(2026, 12, 21, 12), [stay("2026-12-20", "2027-01-06", BLOCK)], {"inputs": HEAT}, "occupied"),
     ("heat blocks: owner arrival pre-heats", T(2026, 12, 20, 1, 0), [stay("2026-12-20", "2027-01-06", BLOCK)],
