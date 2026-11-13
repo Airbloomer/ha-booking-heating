@@ -32,7 +32,7 @@ All the numbers above are settings. The day must start before the night does (e.
 ## Setup
 
 1. Add your booking calendars to Home Assistant, for example with the **Remote Calendar** integration and your Airbnb / Booking.com / website iCal export links. Treat those links as secrets: keep them in Home Assistant, not in this blueprint.
-2. Create an **input_text** helper (Settings → Devices & services → Helpers) for the automation's state. Optionally create an **input_boolean** for the season override and an **input_datetime** for "assume empty until".
+2. Create an **input_text** helper (Settings → Devices & services → Helpers) for the automation's state. Optionally create an **input_boolean** for the season override and an **input_datetime** for "skip blocks until".
 3. Import the blueprint (button above), create an automation from it, pick your thermostat, calendars and helpers.
 4. Start with **Dry run** on: it logs what it would do in the logbook without touching the thermostat. Turn it off when the plans look right. (In dry run nothing is stored, so the same line repeats every 30 minutes.)
 5. Leave the thermostat in heating mode. The automation changes set points or schedules, never the HVAC mode, so a thermostat switched off stays off.
@@ -47,11 +47,13 @@ The default rate (0.5 °C/h) suits floor heating. The best value is your own: no
 
 Events are treated as all-day stays from the check-in day to the check-out day, using the check-in and check-out times you set (defaults 16:00 and 11:00). Events whose title contains an ignored keyword (default `not available, blocked`) are skipped, so owner blocks don't heat the home.
 
-**Your own stays.** Airbnb exports every block with the same title, so an owner stay looks exactly like a closed period and is skipped too: the home stays at the empty set point while you're there. To have your stays heated, add a calendar you control (for example a **Local Calendar** called "Owner stays") to the booking calendars and put your stays in it. Its events count like bookings, pre-heat included.
+**Heat blocked dates.** Airbnb exports every block with the same title, so an owner stay, a maintenance closure and a dead period are the same event. By default they're all skipped, so your own stays aren't heated either. Turn on *Heat blocked dates* to count them as stays: anything on the calendar is heated, and only open dates are empty. Some booking sites treat every calendar event as blocking the dates; this makes the heating read the calendar the same way.
 
-### Assume empty until a date
+### Skip blocks until a date
 
-Pick an **input_datetime** helper with a date (date only, or date and time; a time-only helper isn't supported) as *Assume empty until* and set it. Until then, stays that start before it are ignored, so the home is heated as empty, even during a stay that's already in progress. It ends by itself at that moment; there's nothing to switch back. A stay that starts on or after the date still gets its full pre-heat, even when pre-heat has to begin before the date. If the helper is unset, unavailable or has no date, it has no effect.
+With *Heat blocked dates* on, pick an **input_datetime** helper with a date (date only, or date and time; a time-only helper isn't supported) as *Skip blocks until* and set it. Until then, blocks that start before it are skipped again, so a closed period stays at the empty set point. **Bookings are never affected:** a guest who books inside the window gets a warm home. A block that is removed simply leaves its dates empty. It ends by itself at that moment, and every block counts again, including one already in progress. A block that starts on or after the date gets its full pre-heat, even when pre-heat has to begin before the date. If the helper is unset, unavailable or has no date, it has no effect.
+
+*Assume empty until*, added earlier the same day, has been replaced by this: it skipped bookings inside its window too, which would leave a guest in a cold home.
 
 ### Thermostats
 

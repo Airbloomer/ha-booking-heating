@@ -48,14 +48,24 @@ blueprint:
           selector:
             entity:
               domain: input_boolean
-        assume_vacant_until:
-          name: Assume empty until (optional)
+        heat_blocks:
+          name: Heat blocked dates
           description: >-
-            An input_datetime helper (date, or date and time). Until that moment,
-            stays that start before it are ignored, so the home is heated as empty.
-            It expires by itself: from that moment the calendars count again, and a
-            stay that starts on or after it is pre-heated as usual, even if pre-heat
-            has to begin before it. Empty or unreadable means no effect.
+            Off (default): events containing an ignored keyword are skipped, so blocks
+            don't heat the home. On: they count as stays, so an owner stay or any other
+            block is heated like a booking.
+          default: false
+          selector:
+            boolean: {}
+        ignore_blocks_until:
+          name: Skip blocks until (optional)
+          description: >-
+            Used with "Heat blocked dates". An input_datetime helper with a date (date
+            only, or date and time). Until that moment, blocks that start before it are
+            skipped again, so a closed period stays at the empty set point. Bookings are
+            never affected. It expires by itself: from that moment every block counts
+            again, and a block that starts on or after it is pre-heated as usual. Unset,
+            unavailable or no date means no effect.
           default: []
           selector:
             entity:
@@ -200,7 +210,8 @@ variables:
   ignore_keywords: !input ignore_keywords
   state_helper: !input state_helper
   season_override: !input season_override
-  assume_vacant_until: !input assume_vacant_until
+  heat_blocks: !input heat_blocks
+  ignore_blocks_until: !input ignore_blocks_until
   write_mode: !input write_mode
   dry_run: !input dry_run
   check_in_time: !input check_in_time
@@ -221,7 +232,7 @@ variables:
   season_start: !input season_start
   season_end: !input season_end
   override_entity: "{{ season_override if season_override is string else (season_override | first | default('')) }}"
-  vacant_until_entity: "{{ assume_vacant_until if assume_vacant_until is string else (assume_vacant_until | first | default('')) }}"
+  blocks_until_entity: "{{ ignore_blocks_until if ignore_blocks_until is string else (ignore_blocks_until | first | default('')) }}"
 
 conditions:
   - condition: template
@@ -257,8 +268,8 @@ actions:
         {%- set md = now().strftime('%m-%d') -%}
         {{ not season_ok or ((md >= season_start or md <= season_end) if season_start > season_end else (season_start <= md <= season_end)) }}
       override_on: "{{ override_entity != '' and is_state(override_entity, 'on') }}"
-      vacant_until_ts: >-
-        {%- set raw = states(vacant_until_entity) if vacant_until_entity != '' else '' -%}
+      blocks_until_ts: >-
+        {%- set raw = states(blocks_until_entity) if blocks_until_entity != '' else '' -%}
         {%- set v = as_datetime(raw) if raw is match('^\\d{4}-\\d{2}-\\d{2}( \\d{2}:\\d{2}(:\\d{2})?)?$') else none -%}
         {{ (v | as_local).timestamp() if v is not none else 0 }}
   - variables:
@@ -271,10 +282,11 @@ actions:
         {%- set ns = namespace(occ=false, prev=none, next=none) -%}
         {%- for e in events -%}
           {%- set title = e.summary | default('') | lower -%}
-          {%- if kw | select('in', title) | list | count == 0 -%}
+          {%- set is_block = kw | select('in', title) | list | count > 0 -%}
+          {%- if not is_block or heat_blocks -%}
             {%- set a = ts(e.start, check_in_time) | float -%}
             {%- set b = ts(e.end, check_out_time) | float -%}
-            {%- if nowts >= vacant_until_ts | float or a >= vacant_until_ts | float -%}
+            {%- if not is_block or nowts >= blocks_until_ts | float or a >= blocks_until_ts | float -%}
             {%- if a <= nowts < b %}{% set ns.occ = true %}{% endif -%}
             {%- if b <= nowts and (ns.prev is none or b > ns.prev) %}{% set ns.prev = b %}{% endif -%}
             {%- if a > nowts and (ns.next is none or a < ns.next) %}{% set ns.next = a %}{% endif -%}

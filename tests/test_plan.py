@@ -108,47 +108,56 @@ def stay(a, b, title="Reserved"):
 
 
 T = dt.datetime
-UNTIL = {"inputs": {"assume_vacant_until": "input_datetime.v"}}
+BLOCK = "Airbnb (Not available)"
+HEAT = {"heat_blocks": True}
+UNTIL = {**HEAT, "ignore_blocks_until": "input_datetime.v"}
+
+
+def until(value, **kw):
+    return {"inputs": UNTIL, "states": {"input_datetime.v": value}, **kw}
+
 
 CASES = [
-    # Published defaults: no assume_vacant_until set, every plan as before.
+    # Published defaults: neither new input set, every plan as before.
     ("default: during a stay", T(2026, 12, 2, 12), [stay("2026-12-01", "2026-12-05")], {}, "occupied"),
     ("default: nothing booked", T(2026, 11, 20, 12), [], {}, "vacant_long"),
-    ("default: owner block ignored", T(2026, 12, 21, 12), [stay("2026-12-20", "2027-01-06", "Airbnb (Not available)")], {}, "vacant_long"),
+    ("default: owner block ignored", T(2026, 12, 21, 12), [stay("2026-12-20", "2027-01-06", BLOCK)], {}, "vacant_long"),
     ("default: short gap", T(2026, 12, 6, 12), [stay("2026-12-01", "2026-12-05"), stay("2026-12-08", "2026-12-10")], {}, "vacant_short"),
     ("default: pre-heat 15.5 h before at 15 °C", T(2026, 12, 1, 1, 0), [stay("2026-12-01", "2026-12-05")], {"indoor": 15.0}, "preheat"),
     ("default: not yet 16 h before at 15 °C", T(2026, 11, 30, 23, 30), [stay("2026-12-01", "2026-12-05")], {"indoor": 15.0}, "vacant_long"),
     ("default: frost outside season", T(2026, 10, 15, 12), [], {}, "off_season"),
-    # assume_vacant_until set to 30 Nov 23:59.
-    ("until: stay in progress ignored", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-11-30 23:59:00"}}, "vacant_long"),
-    ("until: 1 Dec arrival still pre-heats on time", T(2026, 12, 1, 1, 0), [stay("2026-12-01", "2026-12-05")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-11-30 23:59:00"}, "indoor": 15.0}, "preheat"),
-    ("until: pre-heat starts before the date for a stay that starts after it", T(2026, 12, 1, 1, 0), [stay("2026-12-01", "2026-12-05")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-12-01 12:00:00"}, "indoor": 15.0}, "preheat"),
-    ("until: a stay starting exactly at the date counts", T(2026, 12, 1, 12), [stay("2026-12-01", "2026-12-05")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-12-01 16:00:00"}, "indoor": 15.0}, "preheat"),
-    ("until: expired, stays count again", T(2026, 12, 2, 12), [stay("2026-12-01", "2026-12-05")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-11-30 23:59:00"}}, "occupied"),
-    ("until: expired, a stay that started before the date counts again", T(2026, 12, 2, 12), [stay("2026-11-28", "2026-12-05")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-12-01 00:00:00"}}, "occupied"),
-    ("until: expired, a stay before the date counts again for the gap", T(2026, 12, 6, 12),
-     [stay("2026-11-28", "2026-12-05"), stay("2026-12-08", "2026-12-10")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-12-01 00:00:00"}}, "vacant_short"),
-    ("until: date-only helper", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
-     {**UNTIL, "states": {"input_datetime.v": "2026-12-01"}}, "vacant_long"),
-    ("until: unknown helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
-     {**UNTIL, "states": {"input_datetime.v": "unknown"}}, "occupied"),
-    ("until: unavailable helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
-     {**UNTIL, "states": {"input_datetime.v": "unavailable"}}, "occupied"),
-    ("until: missing helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
-     UNTIL, "occupied"),
-    ("until: time-only helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
-     {**UNTIL, "states": {"input_datetime.v": "12:00:00"}}, "occupied"),
     ("default: ignored event with a malformed start is still skipped", T(2026, 12, 2, 12),
-     [stay("garbage", "2027-01-06", "Airbnb (Not available)"), stay("2026-12-01", "2026-12-05")], {}, "occupied"),
+     [stay("garbage", "2027-01-06", BLOCK), stay("2026-12-01", "2026-12-05")], {}, "occupied"),
+    ("default: a skip date alone changes nothing", T(2026, 11, 20, 12), [stay("2026-11-18", "2026-11-25")],
+     {"inputs": {"ignore_blocks_until": "input_datetime.v"}, "states": {"input_datetime.v": "2026-11-30 23:59:00"}}, "occupied"),
+    # Heat blocked dates on.
+    ("heat blocks: owner stay heats", T(2026, 12, 21, 12), [stay("2026-12-20", "2027-01-06", BLOCK)], {"inputs": HEAT}, "occupied"),
+    ("heat blocks: owner arrival pre-heats", T(2026, 12, 20, 1, 0), [stay("2026-12-20", "2027-01-06", BLOCK)],
+     {"inputs": HEAT, "indoor": 15.0}, "preheat"),
+    # Skip blocks until 30 Nov 23:59.
+    ("until: block in progress is skipped", T(2026, 11, 20, 12), [stay("2026-11-13", "2026-12-01", BLOCK)],
+     until("2026-11-30 23:59:00"), "vacant_long"),
+    ("until: a guest booking inside the window still heats", T(2026, 11, 20, 12),
+     [stay("2026-11-13", "2026-12-01", BLOCK), stay("2026-11-18", "2026-11-25")], until("2026-11-30 23:59:00"), "occupied"),
+    ("until: a guest booking inside the window still pre-heats", T(2026, 11, 18, 1, 0),
+     [stay("2026-11-13", "2026-12-01", BLOCK), stay("2026-11-18", "2026-11-25")], until("2026-11-30 23:59:00", indoor=15.0), "preheat"),
+    ("until: 1 Dec block arrival still pre-heats on time", T(2026, 12, 1, 1, 0), [stay("2026-12-01", "2026-12-05", BLOCK)],
+     until("2026-11-30 23:59:00", indoor=15.0), "preheat"),
+    ("until: pre-heat starts before the date for a block that starts after it", T(2026, 12, 1, 1, 0),
+     [stay("2026-12-01", "2026-12-05", BLOCK)], until("2026-12-01 12:00:00", indoor=15.0), "preheat"),
+    ("until: a block starting exactly at the date counts", T(2026, 12, 1, 12), [stay("2026-12-01", "2026-12-05", BLOCK)],
+     until("2026-12-01 16:00:00", indoor=15.0), "preheat"),
+    ("until: expired, a block that started before the date counts again", T(2026, 12, 2, 12),
+     [stay("2026-11-28", "2026-12-05", BLOCK)], until("2026-12-01 00:00:00"), "occupied"),
+    ("until: expired, a block before the date counts again for the gap", T(2026, 12, 6, 12),
+     [stay("2026-11-28", "2026-12-05", BLOCK), stay("2026-12-08", "2026-12-10")], until("2026-12-01 00:00:00"), "vacant_short"),
+    ("until: a block that disappears leaves the dates empty", T(2026, 11, 20, 12), [], until("2026-11-30 23:59:00"), "vacant_long"),
+    ("until: date-only helper", T(2026, 11, 20, 12), [stay("2026-11-13", "2026-12-01", BLOCK)], until("2026-12-01"), "vacant_long"),
+    ("until: unknown helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-13", "2026-12-01", BLOCK)], until("unknown"), "occupied"),
+    ("until: unavailable helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-13", "2026-12-01", BLOCK)], until("unavailable"), "occupied"),
+    ("until: missing helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-13", "2026-12-01", BLOCK)], {"inputs": UNTIL}, "occupied"),
+    ("until: time-only helper has no effect", T(2026, 11, 20, 12), [stay("2026-11-13", "2026-12-01", BLOCK)], until("12:00:00"), "occupied"),
 ]
-
 
 def main():
     failed = 0
