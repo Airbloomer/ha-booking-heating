@@ -48,6 +48,18 @@ blueprint:
           selector:
             entity:
               domain: input_boolean
+        assume_vacant_until:
+          name: Assume empty until (optional)
+          description: >-
+            An input_datetime helper (date, or date and time). Until that moment,
+            stays that start before it are ignored, so the home is heated as empty.
+            It expires by itself: from that moment the calendars count again, and a
+            stay that starts on or after it is pre-heated as usual, even if pre-heat
+            has to begin before it. Empty or unreadable means no effect.
+          default: []
+          selector:
+            entity:
+              domain: input_datetime
         write_mode:
           name: How to change the thermostat
           description: >-
@@ -188,6 +200,7 @@ variables:
   ignore_keywords: !input ignore_keywords
   state_helper: !input state_helper
   season_override: !input season_override
+  assume_vacant_until: !input assume_vacant_until
   write_mode: !input write_mode
   dry_run: !input dry_run
   check_in_time: !input check_in_time
@@ -208,6 +221,7 @@ variables:
   season_start: !input season_start
   season_end: !input season_end
   override_entity: "{{ season_override if season_override is string else (season_override | first | default('')) }}"
+  vacant_until_entity: "{{ assume_vacant_until if assume_vacant_until is string else (assume_vacant_until | first | default('')) }}"
 
 conditions:
   - condition: template
@@ -243,6 +257,10 @@ actions:
         {%- set md = now().strftime('%m-%d') -%}
         {{ not season_ok or ((md >= season_start or md <= season_end) if season_start > season_end else (season_start <= md <= season_end)) }}
       override_on: "{{ override_entity != '' and is_state(override_entity, 'on') }}"
+      vacant_until_ts: >-
+        {%- set raw = states(vacant_until_entity) if vacant_until_entity != '' else '' -%}
+        {%- set v = as_datetime(raw) if raw is match('^\\d{4}-\\d{2}-\\d{2}( \\d{2}:\\d{2}(:\\d{2})?)?$') else none -%}
+        {{ (v | as_local).timestamp() if v is not none else 0 }}
   - variables:
       final_plan: >-
         {%- if not cal_ok -%}{{ prev_plan if prev_plan in plans_valid else 'none' }}{%- else -%}
@@ -256,9 +274,11 @@ actions:
           {%- if kw | select('in', title) | list | count == 0 -%}
             {%- set a = ts(e.start, check_in_time) | float -%}
             {%- set b = ts(e.end, check_out_time) | float -%}
+            {%- if a >= vacant_until_ts | float -%}
             {%- if a <= nowts < b %}{% set ns.occ = true %}{% endif -%}
             {%- if b <= nowts and (ns.prev is none or b > ns.prev) %}{% set ns.prev = b %}{% endif -%}
             {%- if a > nowts and (ns.next is none or a < ns.next) %}{% set ns.next = a %}{% endif -%}
+            {%- endif -%}
           {%- endif -%}
         {%- endfor -%}
         {%- if ns.occ -%}{%- set raw = 'occupied' -%}
