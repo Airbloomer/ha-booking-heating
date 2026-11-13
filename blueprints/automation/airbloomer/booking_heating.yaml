@@ -62,8 +62,9 @@ blueprint:
           description: >-
             Used with "Heat blocked dates". An input_datetime helper with a date (date
             only, or date and time). Until that moment, blocks that start before it are
-            skipped again, so a closed period stays at the empty set point. Bookings are
-            never affected. It expires by itself: from that moment every block counts
+            skipped again, so a closed period stays at the empty set point. Bookings
+            (events whose title contains no ignored keyword) are never affected; a channel
+            that titles real reservations with an ignored word is treated as a block. It expires by itself: from that moment every block counts
             again, and a block that starts on or after it is pre-heated as usual. Unset,
             unavailable or no date means no effect.
           default: []
