@@ -274,7 +274,7 @@ actions:
           {%- if kw | select('in', title) | list | count == 0 -%}
             {%- set a = ts(e.start, check_in_time) | float -%}
             {%- set b = ts(e.end, check_out_time) | float -%}
-            {%- if a >= vacant_until_ts | float -%}
+            {%- if nowts >= vacant_until_ts | float or a >= vacant_until_ts | float -%}
             {%- if a <= nowts < b %}{% set ns.occ = true %}{% endif -%}
             {%- if b <= nowts and (ns.prev is none or b > ns.prev) %}{% set ns.prev = b %}{% endif -%}
             {%- if a > nowts and (ns.next is none or a < ns.next) %}{% set ns.next = a %}{% endif -%}
